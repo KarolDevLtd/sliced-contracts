@@ -1,3 +1,3 @@
-import { Add } from './Add.js';
+import { TokenWrite } from './TokenWrite.js';
 
-export { Add };
+export { TokenWrite };
