@@ -12,11 +12,28 @@ import {
   Provable,
   Permissions,
   DeployArgs,
+  UInt32,
 } from 'o1js';
 
+import { PackedBoolFactory } from './lib/packed-types/PackedBool';
+import { PackedUInt32Factory } from './lib/packed-types/PackedUInt32';
+
+export class BoolArr extends PackedBoolFactory(10) {}
+export class Ballot extends PackedUInt32Factory(2) {}
+
 export class UserData extends SmartContract {
+  @state(Ballot) ballot4 = State<Ballot>();
+
   /** Contract that is allowed to modify state of this token account */
   @state(Field) group = State<PublicKey>();
+
+  // @state(BoolArr) ballot4 = State<BoolArr>();
+  // @state(Ballot) ballot4 = State<Ballot>();
+  // @state(Ballot) ballot4 = State<Ballot>();
+
+  // async init() {
+  //   super.init();
+  // }
 
   async deploy(args: DeployArgs & { group: PublicKey }) {
     super.deploy(args);
