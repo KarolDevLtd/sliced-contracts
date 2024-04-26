@@ -8,6 +8,7 @@ import {
   PrivateKey,
   Poseidon,
   UInt64,
+  Bool,
   PublicKey,
   Provable,
   Permissions,
@@ -18,18 +19,14 @@ import {
 import { PackedBoolFactory } from './lib/packed-types/PackedBool';
 import { PackedUInt32Factory } from './lib/packed-types/PackedUInt32';
 
-export class BoolArr extends PackedBoolFactory(10) {}
-export class Ballot extends PackedUInt32Factory(2) {}
+export class Payments extends PackedBoolFactory(250) {}
 
 export class UserData extends SmartContract {
-  @state(Ballot) ballot4 = State<Ballot>();
-
   /** Contract that is allowed to modify state of this token account */
-  @state(Field) group = State<PublicKey>();
+  @state(Field) group = State<Field>();
 
-  // @state(BoolArr) ballot4 = State<BoolArr>();
-  // @state(Ballot) ballot4 = State<Ballot>();
-  // @state(Ballot) ballot4 = State<Ballot>();
+  /** Struct which stores paid off segments */
+  @state(Payments) payments = State<Payments>();
 
   // async init() {
   //   super.init();
@@ -86,5 +83,31 @@ export class UserData extends SmartContract {
     // Log account state
     // console.log('Account state after:', update.body.update.appState[0].value);
     update.requireSignature();
+  }
+
+  @method async paySegments(segmentsPaid: Field) {
+    // const unpacked = (// unpack(oldProof.publicInput.packed);
+    this.payments.requireEquals(this.payments.get());
+    const payments: Payments = this.payments.get();
+    // let unpacked = Payments.unpack(payments);
+
+    let g = payments.packed;
+
+    // Write to the number provided
+    // unpacked[segmentsPaid] = Bool(true);
+
+    // Iterate over array and find latest one
+    // let latest = 0;
+    // for (let i = 0; i < unpacked.length; i++) {
+    //   if (unpacked[i] == Bool(true)) {
+    //     latest = i;
+    //   }
+    // }
+
+    // let bool1 = unpacked;
+    // const g = this.group.fetch;
+    // console.log(g.add());
+    // = unpacked[0].add(1));
+    // newState.assertEquals(Votes.fromUInt32s(unpacked));
   }
 }

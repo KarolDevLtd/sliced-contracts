@@ -10,6 +10,8 @@ import {
   setGraphqlEndpoint,
 } from 'o1js';
 
+import { TestPublicKey } from 'o1js/dist/node/lib/mina/local-blockchain';
+
 /*
  * This file specifies how to test the `Add` example smart contract. It is safe to delete this file and replace
  * with your own tests.
@@ -22,13 +24,10 @@ let proofsEnabled = false;
 describe('Token account write', () => {
   let getAccount: any;
   let deployerAccount: PublicKey,
-    deployerKey: PrivateKey,
-    senderAccount: PublicKey,
-    senderKey: PrivateKey,
-    groupKey: PrivateKey,
-    groupAccount: PublicKey,
-    feePayerKey: PrivateKey,
-    feePayerAccount: PublicKey,
+    deployer: TestPublicKey,
+    sender: TestPublicKey,
+    group: TestPublicKey,
+    feePayer: TestPublicKey,
     zkAppAddress: PublicKey,
     zkAppPrivateKey: PrivateKey,
     zkApp: UserData;
@@ -37,19 +36,16 @@ describe('Token account write', () => {
     if (proofsEnabled) await UserData.compile();
   });
 
-  beforeEach(() => {
-    const Local = Mina.LocalBlockchain({ proofsEnabled });
+  beforeEach(async () => {
+    const Local = await Mina.LocalBlockchain({ proofsEnabled });
     getAccount = Local.getAccount;
     console.log('Started local blockchain');
     Mina.setActiveInstance(Local);
     console.log('Set something ');
-    ({ privateKey: deployerKey, publicKey: deployerAccount } =
-      Local.testAccounts[0]);
-    ({ privateKey: senderKey, publicKey: senderAccount } =
-      Local.testAccounts[1]);
-    ({ privateKey: feePayerKey, publicKey: feePayerAccount } =
-      Local.testAccounts[2]);
-    ({ privateKey: groupKey, publicKey: groupAccount } = Local.testAccounts[3]);
+    deployer = Local.testAccounts[0];
+    sender = Local.testAccounts[1];
+    group = Local.testAccounts[2];
+    feePayer = Local.testAccounts[3];
 
     console.log('Made keys');
     zkAppPrivateKey = PrivateKey.random();
@@ -66,19 +62,16 @@ describe('Token account write', () => {
     await UserData.compile();
 
     const salt = Field.random();
-    const deployTnx = await Mina.transaction(
-      deployerKey.toPublicKey(),
-      async () => {
-        AccountUpdate.fundNewAccount(deployerKey.toPublicKey());
-        zkApp.deploy({ group });
-        // zkApp.initialState(salt, Field(750));
-      }
-    );
+    const deployTnx = await Mina.transaction(deployer, async () => {
+      AccountUpdate.fundNewAccount(deployer);
+      zkApp.deploy({ group });
+      // zkApp.initialState(salt, Field(750));
+    });
 
     console.log('Deploying the zkApp');
     await deployTnx.prove();
     console.log('Deloyed');
-    await deployTnx.sign([deployerKey, zkAppPrivateKey]).send();
+    await deployTnx.sign([deployer.key, zkAppPrivateKey]).send();
   }
 
   // it('Increment secret', async () => {
@@ -106,7 +99,7 @@ describe('Token account write', () => {
   // });
 
   it('Calls setStateUser', async () => {
-    await localDeploy(groupAccount);
+    await localDeploy(group);
 
     // let tokenId = zkApp.token.id;
     let tokenId = zkApp.tokenId;
@@ -115,38 +108,38 @@ describe('Token account write', () => {
     // console.log('Token id2: ', tokenId2);
 
     try {
-      const txn1 = await Mina.transaction(senderKey.toPublicKey(), async () => {
-        AccountUpdate.fundNewAccount(senderAccount);
-        zkApp.initialiseUserAccount(senderKey, Field(6969), tokenId);
+      const txn1 = await Mina.transaction(sender, async () => {
+        AccountUpdate.fundNewAccount(sender);
+        zkApp.initialiseUserAccount(sender.key, Field(6969), tokenId);
       });
       await txn1.prove();
       console.log('Proven set state in token account');
-      await txn1.sign([senderKey]).send();
-      console.log('Signed by: ', senderKey.toPublicKey().toBase58());
+      await txn1.sign([sender.key]).send();
+      console.log('Signed by: ', sender.toBase58());
     } catch (e: any) {
       console.log('Error 1: ', e.message.toString());
     }
 
     // Log user state at this account
     let state = await fetchAccount({
-      publicKey: senderKey.toPublicKey(),
+      publicKey: sender,
       tokenId,
     });
 
     try {
-      const txn1 = await Mina.transaction(senderKey.toPublicKey(), async () => {
+      const txn1 = await Mina.transaction(sender, async () => {
         // AccountUpdate.fundNewAccount(senderKey);
-        zkApp.initialiseUserAccount(senderKey, Field(666), tokenId);
+        zkApp.initialiseUserAccount(sender.key, Field(666), tokenId);
       });
       await txn1.prove();
       console.log('Proven set state in token account');
-      await txn1.sign([senderKey]).send();
-      console.log('Signed by: ', senderKey.toPublicKey().toBase58());
+      await txn1.sign([sender.key]).send();
+      console.log('Signed by: ', sender.key.toPublicKey().toBase58());
     } catch (e: any) {
       console.log('Error 2: ', e.message.toString());
     }
 
-    let state2 = getAccount(senderKey.toPublicKey(), tokenId);
+    let state2 = getAccount(sender, tokenId);
     // console.log('State:', state2.zkapp.appState[0].toString());
     console.log('permissions.editState:', state2.permissions.editState);
 
