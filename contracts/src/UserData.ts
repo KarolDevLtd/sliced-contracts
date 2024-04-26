@@ -27,9 +27,6 @@ export class UserData extends SmartContract {
   /** Contract that is allowed to modify state of this token account */
   @state(PublicKey) group = State<PublicKey>();
 
-  /** Overpayments */
-  @state(Field) overPayments = State<Field>();
-
   // async init() {
   //   super.init();
   // }
@@ -183,10 +180,6 @@ export class UserData extends SmartContract {
 
     let paymentsBools: Bool[] = Payments.unpack(payments.packed);
 
-    // Extract overpayments
-    this.overPayments.requireEquals(this.overPayments.get());
-    const overPayments: Field = this.overPayments.get();
-
     // Variable for total payments count
     let count: Field = Field(0);
 
@@ -209,9 +202,20 @@ export class UserData extends SmartContract {
     }
 
     // Add any overpayments
-    count = count.add(overPayments);
-
     return count;
+  }
+
+  /** Gate for lottery */
+  @method.returns(Bool) async lotteryAccess(
+    user: PublicKey,
+    tokenId: Field,
+    currentSegment: Field
+  ): Promise<Bool> {
+    // Get payments so far
+    const totalPayments: Field = await this.totalPayments(user, tokenId);
+
+    // Return true if it equals current segment number
+    return totalPayments.equals(currentSegment);
   }
 
   /** Make up for prior missed payments */
