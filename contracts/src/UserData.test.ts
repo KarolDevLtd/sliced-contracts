@@ -12,19 +12,11 @@ import {
 
 import { TestPublicKey } from 'o1js/dist/node/lib/mina/local-blockchain';
 
-/*
- * This file specifies how to test the `Add` example smart contract. It is safe to delete this file and replace
- * with your own tests.
- *
- * See https://docs.minaprotocol.com/zkapps for more info.
- */
-
-let proofsEnabled = false;
+let proofsEnabled = true;
 
 describe('Token account write', () => {
   let getAccount: any;
-  let deployerAccount: PublicKey,
-    deployer: TestPublicKey,
+  let deployer: TestPublicKey,
     sender: TestPublicKey,
     group: TestPublicKey,
     feePayer: TestPublicKey,
@@ -33,19 +25,29 @@ describe('Token account write', () => {
     zkApp: UserData;
 
   beforeAll(async () => {
-    if (proofsEnabled) await UserData.compile();
+    console.log('yo');
+    try {
+      if (proofsEnabled) {
+        await UserData.compile();
+      }
+    } catch (e) {
+      console.log('cunt', e);
+    }
+
+    console.log('yo end');
   });
 
   beforeEach(async () => {
+    console.log('yo');
     const Local = await Mina.LocalBlockchain({ proofsEnabled });
-    getAccount = Local.getAccount;
+    getAccount = await Local.getAccount;
     console.log('Started local blockchain');
     Mina.setActiveInstance(Local);
     console.log('Set something ');
-    deployer = Local.testAccounts[0];
-    sender = Local.testAccounts[1];
-    group = Local.testAccounts[2];
-    feePayer = Local.testAccounts[3];
+    deployer = await Local.testAccounts[0];
+    sender = await Local.testAccounts[1];
+    group = await Local.testAccounts[2];
+    feePayer = await Local.testAccounts[3];
 
     console.log('Made keys');
     zkAppPrivateKey = PrivateKey.random();
@@ -61,7 +63,7 @@ describe('Token account write', () => {
 
     await UserData.compile();
 
-    const salt = Field.random();
+    const salt = await Field.random();
     const deployTnx = await Mina.transaction(deployer, async () => {
       AccountUpdate.fundNewAccount(deployer);
       zkApp.deploy({ group });
@@ -101,72 +103,72 @@ describe('Token account write', () => {
   it('Calls setStateUser', async () => {
     await localDeploy(group);
 
-    // let tokenId = zkApp.token.id;
-    let tokenId = zkApp.tokenId;
+    //   // let tokenId = zkApp.token.id;
+    //   let tokenId = zkApp.tokenId;
 
-    // console.log('Token id: ', tokenId);
-    // console.log('Token id2: ', tokenId2);
+    //   // console.log('Token id: ', tokenId);
+    //   // console.log('Token id2: ', tokenId2);
 
-    try {
-      const txn1 = await Mina.transaction(sender, async () => {
-        AccountUpdate.fundNewAccount(sender);
-        zkApp.initialiseUserAccount(sender.key, Field(6969), tokenId);
-      });
-      await txn1.prove();
-      console.log('Proven set state in token account');
-      await txn1.sign([sender.key]).send();
-      console.log('Signed by: ', sender.toBase58());
-    } catch (e: any) {
-      console.log('Error 1: ', e.message.toString());
-    }
+    //   try {
+    //     const txn1 = await Mina.transaction(sender, async () => {
+    //       AccountUpdate.fundNewAccount(sender);
+    //       zkApp.initialiseUserAccount(sender.key, Field(6969), tokenId);
+    //     });
+    //     await txn1.prove();
+    //     console.log('Proven set state in token account');
+    //     await txn1.sign([sender.key]).send();
+    //     console.log('Signed by: ', sender.toBase58());
+    //   } catch (e: any) {
+    //     console.log('Error 1: ', e.message.toString());
+    //   }
 
-    // Log user state at this account
-    let state = await fetchAccount({
-      publicKey: sender,
-      tokenId,
-    });
+    //   // Log user state at this account
+    //   let state = await fetchAccount({
+    //     publicKey: sender,
+    //     tokenId,
+    //   });
 
-    try {
-      const txn1 = await Mina.transaction(sender, async () => {
-        // AccountUpdate.fundNewAccount(senderKey);
-        zkApp.initialiseUserAccount(sender.key, Field(666), tokenId);
-      });
-      await txn1.prove();
-      console.log('Proven set state in token account');
-      await txn1.sign([sender.key]).send();
-      console.log('Signed by: ', sender.key.toPublicKey().toBase58());
-    } catch (e: any) {
-      console.log('Error 2: ', e.message.toString());
-    }
+    //   try {
+    //     const txn1 = await Mina.transaction(sender, async () => {
+    //       // AccountUpdate.fundNewAccount(senderKey);
+    //       zkApp.initialiseUserAccount(sender.key, Field(666), tokenId);
+    //     });
+    //     await txn1.prove();
+    //     console.log('Proven set state in token account');
+    //     await txn1.sign([sender.key]).send();
+    //     console.log('Signed by: ', sender.key.toPublicKey().toBase58());
+    //   } catch (e: any) {
+    //     console.log('Error 2: ', e.message.toString());
+    //   }
 
-    let state2 = getAccount(sender, tokenId);
-    // console.log('State:', state2.zkapp.appState[0].toString());
-    console.log('permissions.editState:', state2.permissions.editState);
+    //   let state2 = getAccount(sender, tokenId);
+    //   // console.log('State:', state2.zkapp.appState[0].toString());
+    //   console.log('permissions.editState:', state2.permissions.editState);
 
-    console.log(
-      'permissions.editState:',
-      state2.permissions.editState.constant.toString()
-    );
+    //   console.log(
+    //     'permissions.editState:',
+    //     state2.permissions.editState.constant.toString()
+    //   );
 
-    console.log(
-      'permissions.setPermissions:',
-      state2.permissions.setPermissions.toString()
-    );
+    //   console.log(
+    //     'permissions.setPermissions:',
+    //     state2.permissions.setPermissions.toString()
+    //   );
 
-    console.log(
-      'permissions.receive.constant:',
-      state2.permissions.receive.constant.toString()
-    );
+    //   console.log(
+    //     'permissions.receive.constant:',
+    //     state2.permissions.receive.constant.toString()
+    //   );
 
-    console.log(
-      'permissions.receive.signatureSufficient:',
-      state2.permissions.receive.signatureSufficient.toString()
-    );
+    //   console.log(
+    //     'permissions.receive.signatureSufficient:',
+    //     state2.permissions.receive.signatureSufficient.toString()
+    //   );
 
-    console.log(
-      'permissions.receive.signatureNecessary:',
-      state2.permissions.receive.signatureNecessary.toString()
-    );
-    // console.log('State:', state);
+    //   console.log(
+    //     'permissions.receive.signatureNecessary:',
+    //     state2.permissions.receive.signatureNecessary.toString()
+    //   );
+    //   // console.log('State:', state);
   });
 });

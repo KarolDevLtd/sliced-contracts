@@ -16,12 +16,12 @@ import { PackedBoolFactory } from './lib/packed-types/PackedBool';
 
 export class Payments extends PackedBoolFactory(250) {}
 
-enum TokenField {
-  Payments = 0,
-  Compensations = 1,
-  Overpayments = 2,
-  Group = 3,
-}
+const TokenField = {
+  Payments: Field(0),
+  Compensations: Field(1),
+  Overpayments: Field(2),
+  Group: Field(3),
+};
 
 export class UserData extends SmartContract {
   /** Contract that is allowed to modify state of this token account */
@@ -53,21 +53,24 @@ export class UserData extends SmartContract {
     user: PublicKey,
     value: Field,
     tokenId: Field,
-    tokenField: TokenField
+    tokenField: Field
   ) {
     // Update without the private key
     let update = AccountUpdate.create(user, tokenId);
-    AccountUpdate.setValue(update.body.update.appState[tokenField], value);
+    AccountUpdate.setValue(
+      update.body.update.appState[tokenField.value[0]],
+      value
+    );
   }
 
   /** Function that reads from token account field */
   @method.returns(Field) async readTokenField(
     user: PublicKey,
     tokenId: Field,
-    tokenField: TokenField
+    tokenField: Field
   ): Promise<Field> {
     let update = AccountUpdate.create(user, tokenId);
-    return update.body.update.appState[tokenField].value;
+    return update.body.update.appState[tokenField.value[0]].value;
   }
 
   /** Called once at the start. User relinquishes ability to modify token account bu signing */
@@ -139,11 +142,11 @@ export class UserData extends SmartContract {
   }
 
   /** Add overpayments */
-  @method async overpay(numberOf: Field) {
-    this.overPayments.requireEquals(this.overPayments.get());
-    const overPayments: Field = this.overPayments.get();
-    this.overPayments.set(overPayments.add(numberOf));
-  }
+  // @method async overpay(numberOf: Field) {
+  //   this.overPayments.requireEquals(this.overPayments.get());
+  //   const overPayments: Field = this.overPayments.get();
+  //   this.overPayments.set(overPayments.add(numberOf));
+  // }
 
   /** Make up for prior missed payments */
   @method.returns(Field) async totalPayments(
@@ -250,7 +253,7 @@ export class UserData extends SmartContract {
     let paymentsBools: Bool[] = Payments.unpack(payments.packed);
 
     // Iterate over untill false is found
-    for (let i = 0; i < paymentsBools.length; i++) {
+    for (let i = 0; i < 254; i++) {
       if (paymentsBools[i] == Bool(true)) {
         // Write to compensation array
         compensationBools[i] = Bool(true);
