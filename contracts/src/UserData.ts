@@ -6,27 +6,28 @@ import {
   method,
   AccountUpdate,
   PrivateKey,
-  Poseidon,
-  UInt64,
   Bool,
   PublicKey,
   Provable,
   Permissions,
   DeployArgs,
-  UInt32,
 } from 'o1js';
-
 import { PackedBoolFactory } from './lib/packed-types/PackedBool';
-import { PackedUInt32Factory } from './lib/packed-types/PackedUInt32';
 
 export class Payments extends PackedBoolFactory(250) {}
 
 export class UserData extends SmartContract {
   /** Contract that is allowed to modify state of this token account */
-  @state(Field) group = State<Field>();
+  @state(PublicKey) group = State<PublicKey>();
 
-  /** Struct which stores paid off segments */
+  /** One for each month */
   @state(Payments) payments = State<Payments>();
+
+  /** Payments to make up for above */
+  @state(Payments) compensations = State<Payments>();
+
+  /** Overpayments */
+  @state(Field) overPayments = State<Field>();
 
   // async init() {
   //   super.init();
@@ -46,7 +47,7 @@ export class UserData extends SmartContract {
     });
 
     // Set the admin address
-    // this.goAddress.set(groupAddress);
+    this.group.set(args.group);
   }
 
   /** Called once at the start. User relinquishes ability to modify token account bu signing */
@@ -85,29 +86,96 @@ export class UserData extends SmartContract {
     update.requireSignature();
   }
 
-  @method async paySegments(segmentsPaid: Field) {
-    // const unpacked = (// unpack(oldProof.publicInput.packed);
+  /** Tick of a single payment round */
+  @method async paySegments(paymentRound: Field) {
     this.payments.requireEquals(this.payments.get());
     const payments: Payments = this.payments.get();
-    // let unpacked = Payments.unpack(payments);
 
-    let g = payments.packed;
+    // Write to the month index provided
+    let paymentsBools: Bool[] = Payments.unpack(payments.packed);
+    paymentsBools[paymentRound.value[0]] = Bool(true);
+    this.payments.set(Payments.fromBools(paymentsBools));
+  }
 
-    // Write to the number provided
-    // unpacked[segmentsPaid] = Bool(true);
+  /** Add overpayments */
+  @method async overpay(numberOf: Field) {
+    this.overPayments.requireEquals(this.overPayments.get());
+    const overPayments: Field = this.overPayments.get();
+    this.overPayments.set(overPayments.add(numberOf));
+  }
 
-    // Iterate over array and find latest one
-    // let latest = 0;
-    // for (let i = 0; i < unpacked.length; i++) {
-    //   if (unpacked[i] == Bool(true)) {
-    //     latest = i;
-    //   }
-    // }
+  /** Make up for prior missed payments */
+  @method.returns(Field) async totalPayments(): Promise<Field> {
+    // Get total payments from:
+    // - payments
+    // - compensations
+    // - overpayment
 
-    // let bool1 = unpacked;
-    // const g = this.group.fetch;
-    // console.log(g.add());
-    // = unpacked[0].add(1));
-    // newState.assertEquals(Votes.fromUInt32s(unpacked));
+    // Set-up compensations
+    this.compensations.requireEquals(this.compensations.get());
+    const compensations: Payments = this.compensations.get();
+    let compensationBools: Bool[] = Payments.unpack(compensations.packed);
+
+    // Set-up payments
+    this.payments.requireEquals(this.payments.get());
+    const payments: Payments = this.payments.get();
+    let paymentsBools: Bool[] = Payments.unpack(payments.packed);
+
+    // Set-up overpayments
+    this.overPayments.requireEquals(this.overPayments.get());
+    const overPayments: Field = this.overPayments.get();
+
+    // Variable for total payments count
+    let count: Field = Field(0);
+
+    // Loop over both
+    for (let i = 0; i < paymentsBools.length; i++) {
+      let add_payments: Field = Provable.if(
+        paymentsBools[i].equals(true),
+        Field(1),
+        Field(0)
+      );
+
+      let add_compensation: Field = Provable.if(
+        compensationBools[i].equals(true),
+        Field(1),
+        Field(0)
+      );
+
+      // Add to count
+      count = count.add(add_payments).add(add_compensation);
+    }
+
+    // Add any overpayments
+    count = count.add(overPayments);
+
+    return count;
+  }
+
+  /** Make up for prior missed payments */
+  @method async compensate(numberOfCompensations: Field) {
+    // Set-up compensations
+    this.compensations.requireEquals(this.compensations.get());
+    const compensations: Payments = this.compensations.get();
+    let compensationBools: Bool[] = Payments.unpack(compensations.packed);
+
+    // Set-up payments
+    this.payments.requireEquals(this.payments.get());
+    const payments: Payments = this.payments.get();
+    let paymentsBools: Bool[] = Payments.unpack(payments.packed);
+
+    // Iterate over untill false is found
+    for (let i = 0; i < paymentsBools.length; i++) {
+      if (paymentsBools[i] == Bool(true)) {
+        // Write to compensation array
+        compensationBools[i] = Bool(true);
+
+        // Subtract from numberOfCompensations
+        numberOfCompensations = numberOfCompensations.sub(1);
+      }
+    }
+
+    // Set compensation
+    this.compensations.set(Payments.fromBools(compensationBools));
   }
 }
