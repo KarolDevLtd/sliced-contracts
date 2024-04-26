@@ -16,15 +16,16 @@ import { PackedBoolFactory } from './lib/packed-types/PackedBool';
 
 export class Payments extends PackedBoolFactory(250) {}
 
+enum TokenField {
+  Payments = 0,
+  Compensations = 1,
+  Overpayments = 2,
+  Group = 3,
+}
+
 export class UserData extends SmartContract {
   /** Contract that is allowed to modify state of this token account */
   @state(PublicKey) group = State<PublicKey>();
-
-  /** One for each month */
-  @state(Payments) payments = State<Payments>();
-
-  /** Payments to make up for above */
-  @state(Payments) compensations = State<Payments>();
 
   /** Overpayments */
   @state(Field) overPayments = State<Field>();
@@ -50,6 +51,28 @@ export class UserData extends SmartContract {
     this.group.set(args.group);
   }
 
+  /** Function that writes to token account field */
+  @method async writeTokenField(
+    user: PublicKey,
+    value: Field,
+    tokenId: Field,
+    tokenField: TokenField
+  ) {
+    // Update without the private key
+    let update = AccountUpdate.create(user, tokenId);
+    AccountUpdate.setValue(update.body.update.appState[tokenField], value);
+  }
+
+  /** Function that reads from token account field */
+  @method.returns(Field) async readTokenField(
+    user: PublicKey,
+    tokenId: Field,
+    tokenField: TokenField
+  ): Promise<Field> {
+    let update = AccountUpdate.create(user, tokenId);
+    return update.body.update.appState[tokenField].value;
+  }
+
   /** Called once at the start. User relinquishes ability to modify token account bu signing */
   @method async initialiseUserAccount(
     user: PrivateKey,
@@ -69,17 +92,20 @@ export class UserData extends SmartContract {
     Provable.log('end  : ', update.body.update.appState[0]);
 
     // Sets receive to proof only
-    // AccountUpdate.setValue(update.body.update.permissions, {
-    //   ...Permissions.default(),
-    //   editState: Permissions.proof(),
-    //   setTokenSymbol: Permissions.proof(),
-    //   send: Permissions.proof(),
-    //   receive: Permissions.proof(),
-    //   setPermissions: Permissions.proof(),
-    //   incrementNonce: Permissions.proof(),
-    // });
+    AccountUpdate.setValue(update.body.update.permissions, {
+      ...Permissions.default(),
+      editState: Permissions.proof(),
+      setTokenSymbol: Permissions.proof(),
+      send: Permissions.proof(),
+      receive: Permissions.proof(),
+      setPermissions: Permissions.proof(),
+      incrementNonce: Permissions.proof(),
+    });
 
-    // AccountUpdate.setValue(update.body.update.permissions.value.receive, amount);
+    // AccountUpdate.setValue(
+    //   update.body.update.permissions.value.receive,
+    //   amount
+    // );
 
     // Log account state
     // console.log('Account state after:', update.body.update.appState[0].value);
@@ -87,14 +113,32 @@ export class UserData extends SmartContract {
   }
 
   /** Tick of a single payment round */
-  @method async paySegments(paymentRound: Field) {
-    this.payments.requireEquals(this.payments.get());
-    const payments: Payments = this.payments.get();
+  @method async paySegments(
+    paymentRound: Field,
+    user: PublicKey,
+    tokenId: Field
+  ) {
+    const paymentsField: Field = await this.readTokenField(
+      user,
+      tokenId,
+      TokenField.Payments
+    );
+
+    const payments: Payments = Payments.fromBools(
+      Payments.unpack(paymentsField)
+    );
 
     // Write to the month index provided
     let paymentsBools: Bool[] = Payments.unpack(payments.packed);
     paymentsBools[paymentRound.value[0]] = Bool(true);
-    this.payments.set(Payments.fromBools(paymentsBools));
+
+    // Write back field to the token account field
+    this.writeTokenField(
+      user,
+      Payments.fromBoolsField(paymentsBools),
+      tokenId,
+      TokenField.Payments
+    );
   }
 
   /** Add overpayments */
@@ -105,23 +149,41 @@ export class UserData extends SmartContract {
   }
 
   /** Make up for prior missed payments */
-  @method.returns(Field) async totalPayments(): Promise<Field> {
+  @method.returns(Field) async totalPayments(
+    user: PublicKey,
+    tokenId: Field
+  ): Promise<Field> {
     // Get total payments from:
     // - payments
     // - compensations
     // - overpayment
 
-    // Set-up compensations
-    this.compensations.requireEquals(this.compensations.get());
-    const compensations: Payments = this.compensations.get();
+    // Extract compensations
+    const compensationField: Field = await this.readTokenField(
+      user,
+      tokenId,
+      TokenField.Compensations
+    );
+
+    const compensations: Payments = Payments.fromBools(
+      Payments.unpack(compensationField)
+    );
+
     let compensationBools: Bool[] = Payments.unpack(compensations.packed);
 
-    // Set-up payments
-    this.payments.requireEquals(this.payments.get());
-    const payments: Payments = this.payments.get();
+    // Extract payments
+    const paymentsField: Field = await this.readTokenField(
+      user,
+      tokenId,
+      TokenField.Payments
+    );
+    const payments: Payments = Payments.fromBools(
+      Payments.unpack(paymentsField)
+    );
+
     let paymentsBools: Bool[] = Payments.unpack(payments.packed);
 
-    // Set-up overpayments
+    // Extract overpayments
     this.overPayments.requireEquals(this.overPayments.get());
     const overPayments: Field = this.overPayments.get();
 
@@ -153,15 +215,34 @@ export class UserData extends SmartContract {
   }
 
   /** Make up for prior missed payments */
-  @method async compensate(numberOfCompensations: Field) {
-    // Set-up compensations
-    this.compensations.requireEquals(this.compensations.get());
-    const compensations: Payments = this.compensations.get();
+  @method async compensate(
+    numberOfCompensations: Field,
+    user: PublicKey,
+    tokenId: Field
+  ) {
+    // Extract compensations
+    const compensationField: Field = await this.readTokenField(
+      user,
+      tokenId,
+      TokenField.Compensations
+    );
+
+    const compensations: Payments = Payments.fromBools(
+      Payments.unpack(compensationField)
+    );
+
     let compensationBools: Bool[] = Payments.unpack(compensations.packed);
 
-    // Set-up payments
-    this.payments.requireEquals(this.payments.get());
-    const payments: Payments = this.payments.get();
+    // Extract payments
+    const paymentsField: Field = await this.readTokenField(
+      user,
+      tokenId,
+      TokenField.Payments
+    );
+    const payments: Payments = Payments.fromBools(
+      Payments.unpack(paymentsField)
+    );
+
     let paymentsBools: Bool[] = Payments.unpack(payments.packed);
 
     // Iterate over untill false is found
@@ -176,6 +257,11 @@ export class UserData extends SmartContract {
     }
 
     // Set compensation
-    this.compensations.set(Payments.fromBools(compensationBools));
+    this.writeTokenField(
+      user,
+      Payments.fromBoolsField(compensationBools),
+      tokenId,
+      TokenField.Compensations
+    );
   }
 }

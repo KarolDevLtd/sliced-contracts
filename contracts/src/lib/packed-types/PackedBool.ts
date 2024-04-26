@@ -40,6 +40,15 @@ export function PackedBoolFactory(l: number = L) {
 
     /**
      *
+     * @param bools Array of Bools to be packed
+     * @returns Instance of the implementing class
+     */
+    static fromBoolsField(bools: Array<Bool>): Field {
+      return PackedBool_.pack(bools);
+    }
+
+    /**
+     *
      * @param booleans Array of booleans to be packed
      * @returns Instance of the implementing class
      */
