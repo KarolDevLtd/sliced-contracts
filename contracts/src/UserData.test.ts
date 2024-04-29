@@ -26,15 +26,10 @@ describe('Token account write', () => {
 
   beforeAll(async () => {
     console.log('yo');
-    try {
-      if (proofsEnabled) {
-        await UserData.compile();
-      }
-    } catch (e) {
-      console.log('cunt', e);
-    }
 
-    console.log('yo end');
+    if (proofsEnabled) {
+      await UserData.compile();
+    }
   });
 
   beforeEach(async () => {

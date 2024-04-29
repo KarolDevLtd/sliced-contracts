@@ -7,6 +7,7 @@ import {
   AccountUpdate,
   PrivateKey,
   Bool,
+  UInt64,
   PublicKey,
   Provable,
   Permissions,
@@ -133,7 +134,7 @@ export class UserData extends SmartContract {
     paymentsBools[paymentRound.value[0]] = Bool(true);
 
     // Write back field to the token account field
-    this.writeTokenField(
+    await this.writeTokenField(
       user,
       Payments.fromBoolsField(paymentsBools),
       tokenId,
@@ -141,12 +142,12 @@ export class UserData extends SmartContract {
     );
   }
 
-  /** Add overpayments */
-  // @method async overpay(numberOf: Field) {
-  //   this.overPayments.requireEquals(this.overPayments.get());
-  //   const overPayments: Field = this.overPayments.get();
-  //   this.overPayments.set(overPayments.add(numberOf));
-  // }
+  // /** Add overpayments */
+  // // @method async overpay(numberOf: Field) {
+  // //   this.overPayments.requireEquals(this.overPayments.get());
+  // //   const overPayments: Field = this.overPayments.get();
+  // //   this.overPayments.set(overPayments.add(numberOf));
+  // // }
 
   /** Make up for prior missed payments */
   @method.returns(Field) async totalPayments(
@@ -223,7 +224,7 @@ export class UserData extends SmartContract {
 
   /** Make up for prior missed payments */
   @method async compensate(
-    numberOfCompensations: Field,
+    numberOfCompensations: UInt64,
     user: PublicKey,
     tokenId: Field
   ) {
@@ -252,15 +253,27 @@ export class UserData extends SmartContract {
 
     let paymentsBools: Bool[] = Payments.unpack(payments.packed);
 
-    // Iterate over untill false is found
-    for (let i = 0; i < 254; i++) {
-      if (paymentsBools[i] == Bool(true)) {
-        // Write to compensation array
-        compensationBools[i] = Bool(true);
+    let change: Bool;
 
-        // Subtract from numberOfCompensations
-        numberOfCompensations = numberOfCompensations.sub(1);
-      }
+    // Iterate over untill the end
+    for (let i = 0; i < 254; i++) {
+      // Change will occur if there is enough to pay and this month is to be paid
+      change = Provable.if(
+        numberOfCompensations
+          .greaterThan(new UInt64(0)) // Something left to pay off
+          .and(paymentsBools[i].equals(Bool(false))), // This entry has not been paid
+        Bool(true),
+        Bool(false)
+      );
+
+      // Update array of compensations
+      compensationBools[i] = Provable.if(change, Bool(true), Bool(false));
+
+      // Set the amount to be subtracted
+      let subAmount: UInt64 = Provable.if(change, new UInt64(1), new UInt64(0));
+
+      // Deduct from numberOfCompensations
+      numberOfCompensations = numberOfCompensations.sub(subAmount);
     }
 
     // Set compensation
