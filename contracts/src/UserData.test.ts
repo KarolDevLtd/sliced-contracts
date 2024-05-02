@@ -1,4 +1,4 @@
-import { UserData } from './UserData';
+import { UserData, TokenField, Payments } from './UserData';
 import {
   Field,
   Mina,
@@ -6,6 +6,8 @@ import {
   PublicKey,
   AccountUpdate,
   fetchAccount,
+  Bool,
+  UInt64,
   Transaction,
   setGraphqlEndpoint,
 } from 'o1js';
@@ -72,10 +74,10 @@ describe('Token account write', () => {
   }
 
   // it('Increment secret', async () => {
-  //   await localDeploy();
+  //   await localDeploy(group);
 
   //   try {
-  //     const txn1 = await Mina.transaction(senderKey.toPublicKey(), () => {
+  //     const txn1 = await Mina.transaction(sender, async () => {
   //       zkApp.incrementSecret(Field(750));
   //     });
   //     await txn1.prove();
@@ -86,8 +88,8 @@ describe('Token account write', () => {
   //       'Private key creates account: ',
   //       senderKey.toPublicKey().toBase58()
   //     );
-  //     await txn1.sign([senderKey]).send();
-  //     console.log('Signed by: ', senderAccount.toBase58());
+  //     await txn1.sign([sender]).send();
+  //     console.log('Signed by: ', sender.toBase58());
   //   } catch (e: any) {
   //     console.log(e.message.toString());
   //   }
@@ -95,75 +97,181 @@ describe('Token account write', () => {
   //   console.log(`After first transaction value is: ${num1.toString()}`);
   // });
 
-  it('Calls setStateUser', async () => {
+  xit('Calls setStateUser', async () => {
     await localDeploy(group);
 
-    //   // let tokenId = zkApp.token.id;
-    //   let tokenId = zkApp.tokenId;
+    // let tokenId = zkApp.token.id;
+    let tokenId = zkApp.tokenId;
 
-    //   // console.log('Token id: ', tokenId);
-    //   // console.log('Token id2: ', tokenId2);
+    try {
+      const txn1 = await Mina.transaction(sender, async () => {
+        AccountUpdate.fundNewAccount(sender);
+        zkApp.initialiseUserAccount(sender.key, Field(6969), tokenId);
+      });
+      await txn1.prove();
+      console.log('Proven set state in token account');
+      await txn1.sign([sender.key]).send();
+      console.log('Signed by: ', sender.toBase58());
+    } catch (e: any) {
+      console.log('Error 1: ', e.message.toString());
+    }
 
-    //   try {
-    //     const txn1 = await Mina.transaction(sender, async () => {
-    //       AccountUpdate.fundNewAccount(sender);
-    //       zkApp.initialiseUserAccount(sender.key, Field(6969), tokenId);
-    //     });
-    //     await txn1.prove();
-    //     console.log('Proven set state in token account');
-    //     await txn1.sign([sender.key]).send();
-    //     console.log('Signed by: ', sender.toBase58());
-    //   } catch (e: any) {
-    //     console.log('Error 1: ', e.message.toString());
-    //   }
+    console.log('Initialised user account');
 
-    //   // Log user state at this account
-    //   let state = await fetchAccount({
-    //     publicKey: sender,
-    //     tokenId,
-    //   });
+    // Log user state at this account
+    let state = await fetchAccount({
+      publicKey: sender,
+      tokenId,
+    });
 
-    //   try {
-    //     const txn1 = await Mina.transaction(sender, async () => {
-    //       // AccountUpdate.fundNewAccount(senderKey);
-    //       zkApp.initialiseUserAccount(sender.key, Field(666), tokenId);
-    //     });
-    //     await txn1.prove();
-    //     console.log('Proven set state in token account');
-    //     await txn1.sign([sender.key]).send();
-    //     console.log('Signed by: ', sender.key.toPublicKey().toBase58());
-    //   } catch (e: any) {
-    //     console.log('Error 2: ', e.message.toString());
-    //   }
+    try {
+      const txn1 = await Mina.transaction(sender, async () => {
+        // AccountUpdate.fundNewAccount(senderKey);
+        zkApp.initialiseUserAccount(sender.key, Field(666), tokenId);
+      });
+      await txn1.prove();
+      console.log('Proven set state in token account');
+      await txn1.sign([sender.key]).send();
+      console.log('Signed by: ', sender.key.toPublicKey().toBase58());
+    } catch (e: any) {
+      console.log('Error 2: ', e.message.toString());
+    }
 
-    //   let state2 = getAccount(sender, tokenId);
-    //   // console.log('State:', state2.zkapp.appState[0].toString());
-    //   console.log('permissions.editState:', state2.permissions.editState);
+    let state2 = getAccount(sender, tokenId);
+    // console.log('State:', state2.zkapp.appState[0].toString());
+    console.log('permissions.editState:', state2.permissions.editState);
 
-    //   console.log(
-    //     'permissions.editState:',
-    //     state2.permissions.editState.constant.toString()
-    //   );
+    console.log(
+      'permissions.editState:',
+      state2.permissions.editState.constant.toString()
+    );
 
-    //   console.log(
-    //     'permissions.setPermissions:',
-    //     state2.permissions.setPermissions.toString()
-    //   );
+    console.log(
+      'permissions.setPermissions:',
+      state2.permissions.setPermissions.toString()
+    );
 
-    //   console.log(
-    //     'permissions.receive.constant:',
-    //     state2.permissions.receive.constant.toString()
-    //   );
+    console.log(
+      'permissions.receive.constant:',
+      state2.permissions.receive.constant.toString()
+    );
 
-    //   console.log(
-    //     'permissions.receive.signatureSufficient:',
-    //     state2.permissions.receive.signatureSufficient.toString()
-    //   );
+    console.log(
+      'permissions.receive.signatureSufficient:',
+      state2.permissions.receive.signatureSufficient.toString()
+    );
 
-    //   console.log(
-    //     'permissions.receive.signatureNecessary:',
-    //     state2.permissions.receive.signatureNecessary.toString()
-    //   );
-    //   // console.log('State:', state);
+    console.log(
+      'permissions.receive.signatureNecessary:',
+      state2.permissions.receive.signatureNecessary.toString()
+    );
+    // console.log('State:', state);
+  });
+
+  it('Calls add payemnts for user', async () => {
+    await localDeploy(group);
+
+    // let tokenId = zkApp.token.id;
+    let tokenId = zkApp.tokenId;
+
+    try {
+      const txn1 = await Mina.transaction(sender, async () => {
+        // await AccountUpdate.fundNewAccount(sender);
+        await zkApp.initialiseUserAccount(sender.key, Field(6969), tokenId);
+      });
+      await txn1.prove();
+      console.log('Proven set state in token account');
+      await txn1.sign([sender.key]).send();
+      console.log('User init signed by: ', sender.toBase58());
+    } catch (e: any) {
+      console.log('Error account creation: ', e.message.toString());
+    }
+
+    // Call read token field method
+    let paymentsFieldBefore = await zkApp.readTokenField(
+      sender,
+      tokenId,
+      TokenField.Payments
+    );
+
+    console.log(
+      'Payments field before payment',
+      paymentsFieldBefore.toString()
+    );
+
+    //
+
+    try {
+      const txn1 = await Mina.transaction(sender, async () => {
+        // Pay off for the month 0xw
+        await zkApp.paySegments(new UInt64(0), sender, tokenId);
+      });
+      await txn1.prove();
+      console.log('Proven set state in token account');
+      await txn1.sign([sender.key]).send();
+      console.log(
+        'Pay segment signed by: ',
+        sender.key.toPublicKey().toBase58()
+      );
+    } catch (e: any) {
+      console.log('Error 2: ', e.message.toString());
+    }
+
+    try {
+      const txn1 = await Mina.transaction(sender, async () => {
+        // Pay off for the month 0xw
+        await zkApp.paySegments(new UInt64(1), sender, tokenId);
+      });
+      await txn1.prove();
+      console.log('Proven set state in token account');
+      await txn1.sign([sender.key]).send();
+      console.log(
+        'Pay segment signed by: ',
+        sender.key.toPublicKey().toBase58()
+      );
+    } catch (e: any) {
+      console.log('Error 2: ', e.message.toString());
+    }
+
+    try {
+      const txn1 = await Mina.transaction(sender, async () => {
+        // Pay off for the month 0xw
+        await zkApp.paySegments(new UInt64(4), sender, tokenId);
+      });
+      await txn1.prove();
+      console.log('Proven set state in token account');
+      await txn1.sign([sender.key]).send();
+      console.log(
+        'Pay segment signed by: ',
+        sender.key.toPublicKey().toBase58()
+      );
+    } catch (e: any) {
+      console.log('Error 2: ', e.message.toString());
+    }
+
+    // Doesn't fetch state
+    let paymentsField = await zkApp.readTokenField(
+      sender,
+      tokenId,
+      TokenField.Payments
+    );
+    console.log('Payments field after payment', paymentsField);
+
+    // Does fetch state
+    let state2 = getAccount(sender, tokenId);
+    console.log('State2[0]:', state2.zkapp.appState[0].toString());
+    console.log('State2[1]:', state2.zkapp.appState[1].toString());
+    console.log('State2[2]:', state2.zkapp.appState[2].toString());
+
+    // Convert to bool array
+    let boolArr: Bool[] = await Payments.unpack(state2.zkapp.appState[0]);
+
+    for (let b = 0; b < 20; b++) {
+      console.log(`boolArr [${b}]:  ${boolArr[b]}`);
+    }
+
+    for (let b = boolArr.length - 20; b < boolArr.length; b++) {
+      console.log(`boolArr [${b}]:  ${boolArr[b]}`);
+    }
   });
 });

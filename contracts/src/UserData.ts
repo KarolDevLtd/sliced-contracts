@@ -17,7 +17,7 @@ import { PackedBoolFactory } from './lib/packed-types/PackedBool';
 
 export class Payments extends PackedBoolFactory(250) {}
 
-const TokenField = {
+export const TokenField = {
   Payments: Field(0),
   Compensations: Field(1),
   Overpayments: Field(2),
@@ -56,12 +56,22 @@ export class UserData extends SmartContract {
     tokenId: Field,
     tokenField: Field
   ) {
-    // Update without the private key
-    let update = AccountUpdate.create(user, tokenId);
-    AccountUpdate.setValue(
-      update.body.update.appState[tokenField.value[0]],
-      value
-    );
+    // Loop over utilsied fields
+    let update = AccountUpdate.createSigned(user, tokenId);
+    let valUpdate: Field;
+    for (let i = 0; i < 4; i++) {
+      valUpdate = Provable.if(
+        Field(i).equals(tokenField),
+        value,
+        update.body.update.appState[i].value
+      );
+
+      AccountUpdate.setValue(update.body.update.appState[i], valUpdate);
+    }
+
+    // AccountUpdate.setValue(update.body.update.appState[0], Field(420));
+
+    update.requireSignature();
   }
 
   /** Function that reads from token account field */
@@ -71,7 +81,17 @@ export class UserData extends SmartContract {
     tokenField: Field
   ): Promise<Field> {
     let update = AccountUpdate.create(user, tokenId);
-    return update.body.update.appState[tokenField.value[0]].value;
+
+    let ret: Field = Field(0);
+    for (let i = 0; i < 4; i++) {
+      ret = Provable.if(
+        Field(i).equals(tokenField),
+        update.body.update.appState[i].value,
+        ret
+      );
+      update.body.update.appState[i].value;
+    }
+    return ret;
   }
 
   /** Called once at the start. User relinquishes ability to modify token account bu signing */
@@ -81,33 +101,27 @@ export class UserData extends SmartContract {
     tokenId: Field
   ) {
     // Nullify all other fields
-
     // Update struct
     // let update = AccountUpdate.create(user.toPublicKey(), tokenId);
     let update = AccountUpdate.createSigned(user.toPublicKey(), tokenId);
-
-    Provable.log('start: ', update.body.update.appState[0]);
-    // let firstState = update.body.update.appState[0];
+    // Provable.log('start: ', update.body.update.appState[0]);
+    // // let firstState = update.body.update.appState[0];
     AccountUpdate.setValue(update.body.update.appState[0], amount);
-
-    Provable.log('end  : ', update.body.update.appState[0]);
-
-    // Sets receive to proof only
+    // Provable.log('end  : ', update.body.update.appState[0]);
+    // // Sets receive to proof only
     AccountUpdate.setValue(update.body.update.permissions, {
       ...Permissions.default(),
-      editState: Permissions.proof(),
+      editState: Permissions.proofOrSignature(),
       setTokenSymbol: Permissions.proof(),
       send: Permissions.proof(),
       receive: Permissions.proof(),
       setPermissions: Permissions.proof(),
-      incrementNonce: Permissions.proof(),
+      incrementNonce: Permissions.proofOrSignature(),
     });
-
     // AccountUpdate.setValue(
     //   update.body.update.permissions.value.receive,
     //   amount
     // );
-
     // Log account state
     // console.log('Account state after:', update.body.update.appState[0].value);
     update.requireSignature();
@@ -115,7 +129,7 @@ export class UserData extends SmartContract {
 
   /** Tick of a single payment round */
   @method async paySegments(
-    paymentRound: Field,
+    paymentRound: UInt64,
     user: PublicKey,
     tokenId: Field
   ) {
@@ -124,19 +138,31 @@ export class UserData extends SmartContract {
       tokenId,
       TokenField.Payments
     );
-
-    const payments: Payments = Payments.fromBools(
+    const payments: Payments = await Payments.fromBools(
       Payments.unpack(paymentsField)
     );
+    // // Write to the month index provided
+    let paymentsBools: Bool[] = await Payments.unpack(payments.packed);
 
-    // Write to the month index provided
-    let paymentsBools: Bool[] = Payments.unpack(payments.packed);
-    paymentsBools[paymentRound.value[0]] = Bool(true);
+    // Iterate over all values and flip one only
+    for (let i = 0; i < 240; i++) {
+      paymentsBools[i] = Provable.if(
+        new UInt64(i).equals(paymentRound),
+        Bool(true),
+        paymentsBools[i]
+      );
+    }
+
+    console.log(
+      'Pay seg paymentRound.value.value[0]: ',
+      paymentRound.value.value[0]
+    );
 
     // Write back field to the token account field
     await this.writeTokenField(
       user,
       Payments.fromBoolsField(paymentsBools),
+      // Field(410),
       tokenId,
       TokenField.Payments
     );
@@ -188,7 +214,7 @@ export class UserData extends SmartContract {
     let count: Field = Field(0);
 
     // Loop over both
-    for (let i = 0; i < paymentsBools.length; i++) {
+    for (let i = 0; i < 240; i++) {
       let add_payments: Field = Provable.if(
         paymentsBools[i].equals(true),
         Field(1),
@@ -235,11 +261,11 @@ export class UserData extends SmartContract {
       TokenField.Compensations
     );
 
-    const compensations: Payments = Payments.fromBools(
+    const compensations: Payments = await Payments.fromBools(
       Payments.unpack(compensationField)
     );
 
-    let compensationBools: Bool[] = Payments.unpack(compensations.packed);
+    let compensationBools: Bool[] = await Payments.unpack(compensations.packed);
 
     // Extract payments
     const paymentsField: Field = await this.readTokenField(
@@ -247,37 +273,47 @@ export class UserData extends SmartContract {
       tokenId,
       TokenField.Payments
     );
-    const payments: Payments = Payments.fromBools(
+    const payments: Payments = await Payments.fromBools(
       Payments.unpack(paymentsField)
     );
 
-    let paymentsBools: Bool[] = Payments.unpack(payments.packed);
+    let paymentsBools: Bool[] = await Payments.unpack(payments.packed);
+
+    // console.log('paymentsField', paymentsField);
 
     let change: Bool;
 
     // Iterate over untill the end
-    for (let i = 0; i < 254; i++) {
+    for (let i = 0; i < 240; i++) {
+      // console.log('Loop vallue: ', paymentsBools[i]);
       // Change will occur if there is enough to pay and this month is to be paid
       change = Provable.if(
-        numberOfCompensations
-          .greaterThan(new UInt64(0)) // Something left to pay off
-          .and(paymentsBools[i].equals(Bool(false))), // This entry has not been paid
+        // numberOfCompensations
+        //   .greaterThan(new UInt64(0)) // Something left to pay off
+        //   .and(paymentsBools[i].equals(Bool(false))), // This entry has not been paid
+        paymentsBools[i].equals(Bool(false)),
         Bool(true),
         Bool(false)
       );
 
       // Update array of compensations
-      compensationBools[i] = Provable.if(change, Bool(true), Bool(false));
+      compensationBools[i] = await Provable.if(change, Bool(true), Bool(false));
 
       // Set the amount to be subtracted
-      let subAmount: UInt64 = Provable.if(change, new UInt64(1), new UInt64(0));
+      let subAmount: UInt64 = await Provable.if(
+        change,
+        new UInt64(1),
+        new UInt64(0)
+      );
 
       // Deduct from numberOfCompensations
       numberOfCompensations = numberOfCompensations.sub(subAmount);
     }
 
+    // console.log('Exited the loop');
+
     // Set compensation
-    this.writeTokenField(
+    await this.writeTokenField(
       user,
       Payments.fromBoolsField(compensationBools),
       tokenId,
