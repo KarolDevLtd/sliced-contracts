@@ -1,10 +1,14 @@
 import {
   Field,
   SmartContract,
+  TokenContract,
   state,
   State,
   method,
+  Account,
   AccountUpdate,
+  VerificationKey,
+  Experimental,
   PrivateKey,
   Bool,
   UInt64,
@@ -12,7 +16,9 @@ import {
   Provable,
   Permissions,
   DeployArgs,
+  fetchAccount,
 } from 'o1js';
+
 import { PackedBoolFactory } from './lib/packed-types/PackedBool';
 
 export class Payments extends PackedBoolFactory(250) {}
@@ -24,75 +30,129 @@ export const TokenField = {
   Group: Field(3),
 };
 
-export class UserData extends SmartContract {
-  /** Contract that is allowed to modify state of this token account */
-  @state(PublicKey) group = State<PublicKey>();
-
-  // async init() {
-  //   super.init();
-  // }
-
-  async deploy(args: DeployArgs & { group: PublicKey }) {
-    super.deploy(args);
+// Contract. Gets deployed
+export class TestContract extends SmartContract {
+  @state(Field) x = State<Field>();
+  async deploy() {
+    super.deploy();
     this.account.permissions.set({
       ...Permissions.default(),
       editState: Permissions.none(),
       setTokenSymbol: Permissions.none(),
       //   editActionsState: Permissions.none(),
       send: Permissions.none(),
-      receive: Permissions.impossible(),
+      receive: Permissions.none(),
       setPermissions: Permissions.none(),
-      incrementNonce: Permissions.none(),
+      incrementNonce: Permissions.proof(),
     });
-
-    // Set the admin address
-    this.group.set(args.group);
   }
 
-  /** Function that writes to token account field */
-  @method async writeTokenField(
-    user: PublicKey,
-    value: Field,
-    tokenId: Field,
-    tokenField: Field
+  @method async initialiseUserAccount(
+    address: PublicKey,
+    vk: VerificationKey,
+    // tokenKey: PrivateKey,
+    value: Field
   ) {
-    // Loop over utilsied fields
-    let update = AccountUpdate.createSigned(user, tokenId);
-    let valUpdate: Field;
-    for (let i = 0; i < 4; i++) {
-      valUpdate = Provable.if(
-        Field(i).equals(tokenField),
-        value,
-        update.body.update.appState[i].value
-      );
+    // const update = AccountUpdate.createSigned(address, this.tokenId);
+    // update.body.update.verificationKey = { isSome: Bool(true), value: vk };
+    // update.body.update.permissions = {
+    //   isSome: Bool(true),
+    //   value: {
+    //     ...Permissions.default(),
+    //     editState: Permissions.proofOrSignature(),
+    //     incrementNonce: Permissions.proofOrSignature(),
+    //   },
+    // };
 
-      AccountUpdate.setValue(update.body.update.appState[i], valUpdate);
-    }
+    // update.body.update.appState[0] = { isSome: Bool(true), value };
 
-    // AccountUpdate.setValue(update.body.update.appState[0], Field(420));
-
-    update.requireSignature();
+    const deployUpdate = AccountUpdate.createSigned(address, this.tokenId);
+    deployUpdate.account.permissions.set({
+      ...Permissions.default(),
+      receive: Permissions.none(),
+      send: Permissions.proof(),
+      editState: Permissions.proof(),
+      editActionState: Permissions.proof(),
+      setDelegate: Permissions.proof(),
+      setPermissions: Permissions.proof(),
+      setZkappUri: Permissions.proof(),
+      setTokenSymbol: Permissions.proof(),
+      incrementNonce: Permissions.proof(),
+      setVotingFor: Permissions.proof(),
+      setTiming: Permissions.proof(),
+      access: Permissions.none(),
+    });
+    deployUpdate.body.update.verificationKey = {
+      isSome: Bool(true),
+      value: vk,
+    };
+    deployUpdate.account.verificationKey.set(
+      TokenContract.withDrawAccountVerifyKey
+    );
+    // deployUpdate.account.isNew.assertEquals(Bool(true));
+    AccountUpdate.setValue(deployUpdate.body.update.appState[0], Field(1));
+    AccountUpdate.setValue(deployUpdate.body.update.appState[1], Field(1));
+    deployUpdate.requireSignature();
   }
 
-  /** Function that reads from token account field */
-  @method.returns(Field) async readTokenField(
-    user: PublicKey,
-    tokenId: Field,
-    tokenField: Field
-  ): Promise<Field> {
-    let update = AccountUpdate.create(user, tokenId);
-
-    let ret: Field = Field(0);
-    for (let i = 0; i < 4; i++) {
-      ret = Provable.if(
-        Field(i).equals(tokenField),
-        update.body.update.appState[i].value,
-        ret
-      );
-      update.body.update.appState[i].value;
-    }
-    return ret;
+  @method async dudd() {
+    let x = this.x.getAndRequireEquals();
+    Provable.log('x: ', x);
+    let y = x.add(Field(1));
+    this.x.set(y);
+    Provable.log('x + 1: ', y);
   }
+
+  @method async duddToken(user: PrivateKey) {
+    let ud = new UserData2(user.toPublicKey(), this.tokenId);
+    await ud.duddToken();
+  }
+
+  @method async initUser(user: PrivateKey, amount: Field) {
+    let ud = new UserData2(user.toPublicKey(), this.tokenId);
+    await ud.initialiseUserAccount(user, amount, this.tokenId);
+  }
+
+  @method async updateState(user: PublicKey, seg: UInt64) {
+    let ud = new UserData2(user, this.tokenId);
+    const nullStartIndex = await ud.paySegments(seg);
+    Provable.log('nullStartIndex: ', nullStartIndex);
+  }
+}
+
+// Wrapper
+export class UserData2 extends SmartContract {
+  @state(Field) payments = State<Field>();
+  @state(Field) overpayments = State<Field>();
+  @state(Field) compensations = State<Field>();
+  /** Contract that is allowed to modify state of this token account */
+  @state(PublicKey) group = State<PublicKey>();
+
+  @method async duddToken() {
+    let x = this.payments.getAndRequireEquals();
+    Provable.log('x: ', x);
+  }
+
+  // async init() {
+  //   super.init();
+  // }
+
+  // async deploy(args: DeployArgs & { group: PublicKey }) {
+  //   super.deploy(args);
+  //   this.account.permissions.set({
+  //     ...Permissions.default(),
+  //     editState: Permissions.none(),
+  //     setTokenSymbol: Permissions.none(),
+  //     //   editActionsState: Permissions.none(),
+  //     send: Permissions.none(),
+  //     receive: Permissions.impossible(),
+  //     setPermissions: Permissions.none(),
+  //     incrementNonce: Permissions.proof(),
+  //   });
+
+  //   // Set the admin address
+  //   this.group.set(args.group);
+  // }
 
   /** Called once at the start. User relinquishes ability to modify token account bu signing */
   @method async initialiseUserAccount(
@@ -116,41 +176,32 @@ export class UserData extends SmartContract {
       send: Permissions.proof(),
       receive: Permissions.proof(),
       setPermissions: Permissions.proof(),
-      incrementNonce: Permissions.proofOrSignature(),
+      incrementNonce: Permissions.none(),
     });
-    // AccountUpdate.setValue(
-    //   update.body.update.permissions.value.receive,
-    //   amount
-    // );
-    // Log account state
-    // console.log('Account state after:', update.body.update.appState[0].value);
+
     update.requireSignature();
   }
 
   /** Tick of a single payment round */
-  @method async paySegments(
-    paymentRound: UInt64,
-    user: PublicKey,
-    tokenId: Field
-  ) {
-    const paymentsField: Field = await this.readTokenField(
-      user,
-      tokenId,
-      TokenField.Payments
-    );
+  @method async paySegments(paymentRound: UInt64) {
+    let paymentsField = this.payments.getAndRequireEquals();
     const payments: Payments = await Payments.fromBools(
       Payments.unpack(paymentsField)
     );
+
     // // Write to the month index provided
     let paymentsBools: Bool[] = await Payments.unpack(payments.packed);
 
     // Iterate over all values and flip one only
     for (let i = 0; i < 240; i++) {
-      paymentsBools[i] = Provable.if(
+      let t: Bool = paymentsBools[i];
+      let newWrite: Bool = Provable.if(
         new UInt64(i).equals(paymentRound),
         Bool(true),
-        paymentsBools[i]
+        t
       );
+
+      paymentsBools[i] = newWrite;
     }
 
     console.log(
@@ -158,52 +209,22 @@ export class UserData extends SmartContract {
       paymentRound.value.value[0]
     );
 
-    // Write back field to the token account field
-    await this.writeTokenField(
-      user,
-      Payments.fromBoolsField(paymentsBools),
-      // Field(410),
-      tokenId,
-      TokenField.Payments
-    );
+    // Update payments
+    this.payments.set(Payments.fromBoolsField(paymentsBools));
   }
 
-  // /** Add overpayments */
-  // // @method async overpay(numberOf: Field) {
-  // //   this.overPayments.requireEquals(this.overPayments.get());
-  // //   const overPayments: Field = this.overPayments.get();
-  // //   this.overPayments.set(overPayments.add(numberOf));
-  // // }
-
   /** Make up for prior missed payments */
-  @method.returns(Field) async totalPayments(
-    user: PublicKey,
-    tokenId: Field
-  ): Promise<Field> {
-    // Get total payments from:
-    // - payments
-    // - compensations
-    // - overpayment
-
+  @method.returns(Field) async totalPayments(): Promise<Field> {
     // Extract compensations
-    const compensationField: Field = await this.readTokenField(
-      user,
-      tokenId,
-      TokenField.Compensations
-    );
-
+    let compensationsField = this.compensations.getAndRequireEquals();
     const compensations: Payments = Payments.fromBools(
-      Payments.unpack(compensationField)
+      Payments.unpack(compensationsField)
     );
 
     let compensationBools: Bool[] = Payments.unpack(compensations.packed);
 
     // Extract payments
-    const paymentsField: Field = await this.readTokenField(
-      user,
-      tokenId,
-      TokenField.Payments
-    );
+    let paymentsField = this.payments.getAndRequireEquals();
     const payments: Payments = Payments.fromBools(
       Payments.unpack(paymentsField)
     );
@@ -237,42 +258,26 @@ export class UserData extends SmartContract {
 
   /** Gate for lottery */
   @method.returns(Bool) async lotteryAccess(
-    user: PublicKey,
-    tokenId: Field,
     currentSegment: Field
   ): Promise<Bool> {
     // Get payments so far
-    const totalPayments: Field = await this.totalPayments(user, tokenId);
+    const totalPayments: Field = await this.totalPayments();
 
     // Return true if it equals current segment number
     return totalPayments.equals(currentSegment);
   }
 
   /** Make up for prior missed payments */
-  @method async compensate(
-    numberOfCompensations: UInt64,
-    user: PublicKey,
-    tokenId: Field
-  ) {
+  @method async compensate(numberOfCompensations: UInt64) {
     // Extract compensations
-    const compensationField: Field = await this.readTokenField(
-      user,
-      tokenId,
-      TokenField.Compensations
-    );
-
+    let compensationsField = this.compensations.getAndRequireEquals();
     const compensations: Payments = await Payments.fromBools(
-      Payments.unpack(compensationField)
+      Payments.unpack(compensationsField)
     );
-
     let compensationBools: Bool[] = await Payments.unpack(compensations.packed);
 
     // Extract payments
-    const paymentsField: Field = await this.readTokenField(
-      user,
-      tokenId,
-      TokenField.Payments
-    );
+    let paymentsField = this.payments.getAndRequireEquals();
     const payments: Payments = await Payments.fromBools(
       Payments.unpack(paymentsField)
     );
@@ -310,14 +315,10 @@ export class UserData extends SmartContract {
       numberOfCompensations = numberOfCompensations.sub(subAmount);
     }
 
-    // console.log('Exited the loop');
-
-    // Set compensation
-    await this.writeTokenField(
-      user,
-      Payments.fromBoolsField(compensationBools),
-      tokenId,
-      TokenField.Compensations
-    );
+    // Update compensations
+    this.compensations.set(Payments.fromBoolsField(compensationBools));
   }
 }
+
+// TokenContract calls SmartContract {
+//
