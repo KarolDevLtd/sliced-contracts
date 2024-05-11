@@ -86,9 +86,9 @@ export class TestContract extends SmartContract {
       isSome: Bool(true),
       value: vk,
     };
-    deployUpdate.account.verificationKey.set(
-      TokenContract.withDrawAccountVerifyKey
-    );
+    // deployUpdate.account.verificationKey.set(
+    //   TokenContract.withDrawAccountVerifyKey
+    // );
     // deployUpdate.account.isNew.assertEquals(Bool(true));
     AccountUpdate.setValue(deployUpdate.body.update.appState[0], Field(1));
     AccountUpdate.setValue(deployUpdate.body.update.appState[1], Field(1));
